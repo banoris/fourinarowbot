@@ -27,6 +27,15 @@
 /*TODO Find the appropriate angle */
 #define RELEASE_CHECKER 23
 #define OPEN_DOOR 23
+#define SERVO_PUSH 1
+#define SERVO_DOOR 2
+
+int checker_array[5][6] = { {0, 0, 0, 0, 0, 0, 0},
+							{0, 0, 0, 0, 0, 0, 0},
+							{0, 0, 0, 0, 0, 0, 0},
+							{0, 0, 0, 0, 0, 0, 0},
+							{0, 0, 0, 0, 0, 0, 0},
+							{0, 0, 0, 0, 0, 0, 0}};
 
 
 static const char *html_form =
@@ -36,6 +45,47 @@ static const char *html_form =
   "<input type=\"submit\" />"
   "</form></body></html>";
 
+
+/*
+	check if win or not
+*/
+
+int check_win()
+{
+	int row, column, count;
+
+	// check horizontal
+	for (row = 0; row <= 5; ++row) {
+		// column check up to N-1, because it will check with N with N+1
+		for(column = 0; column <=5; ++column) {
+			if (checker_array[row][column] == checker_array[column+1]) {
+				count++;
+
+
+			}
+		}
+	}
+
+	if (count >=4 ) return 1;
+	// print winner to LCD??
+
+
+	count = 0; // reset counter
+	//check vertical
+	for(column = 0; column <=6; column++) {
+		for(row = 0; row <=4; row++) {
+			if(checker_array[row][column] == checker_array[row+1][column]) count++;
+		}
+	}
+
+	if (count >= 4) return 1;
+
+	// TODO check diagonal
+
+
+
+	return 0;
+}
 
 
 /*
@@ -58,7 +108,7 @@ void rotate_servo(const int i, char motor)
 }
 
 
-void open_door(int sensor_column)
+void open_door_remote(int sensor_column)
 {
 	int stop = 0;
 
@@ -66,7 +116,7 @@ void open_door(int sensor_column)
 	while(stop != 1) {
 
 		if (activate_sensor() == sensor_column) {
-				rotate_servo(OPEN_DOOR);
+				rotate_servo(OPEN_DOOR, SERVO_DOOR);
 				stop = 1;
 		}
 
@@ -111,38 +161,11 @@ static int begin_request_handler(struct mg_connection *conn) {
     // Parse form data
     mg_get_var(post_data, post_data_len, "input_1", input, sizeof(input));
 
+    int column = atoi(input);
+
+    update_array(column); // update the checker array from the received input
+
     // check user input i.e. the column number
-    switch (input) {
-		case '1': // column 1
-
-			break;
-		case '2':
-
-			break;
-
-		case '3':
-
-			break;
-
-		case '4':
-
-			break;
-
-		case '5':
-
-			break;
-
-		case '6':
-
-			break;
-
-		case '7':
-
-			break;
-
-		default:
-			break;
-	}
 
 
   } else {
@@ -156,7 +179,7 @@ static int begin_request_handler(struct mg_connection *conn) {
 }
 
 
-static void *server_thread(void arg)
+static void *server_thread(void *arg)
 {
 	struct mg_context *ctx;
 	const char *options[] = {"listening_port", "8080", NULL};
@@ -172,34 +195,63 @@ static void *server_thread(void arg)
 	return NULL;
 }
 
+/*
+ * Used to update the checker_array properly
+ * @param column_n - column number read from the sensor for human player and from webpage for remote player
+ *
+ *
+ * */
+
+void update_array(int column_n)
+{
+	int i = 0;
+
+	// 6 -- row number
+	// iterate from top row to bottom row
+	for (i = 0; i <= 5; ++i) {
+		if (checker_array[i][column_n] == 1) {
+			checker_array[i-1][column_n] = 1; // set the position as filled with checker
+		}
+	}
+}
+
 
 int main(void)
 {
 	pthread_t server_t;
 	int err;
-
+	int game_end;
 
 	err = pthread_create(&server_t, NULL, server_thread, NULL);
 
-	// wait for remote player --> semaphore??
 
-	// let say L player start first
+	while(1) {
 
-	// sensor get ready, obtain the column number
+		// let say L player start first
 
-	// R player turn --> door open
-	/* receive input from R player -->
-	 * checker release push
-	 * sensor get ready
-	 * door open appropriately
-	*/
+		// open door
+		rotate_servo(OPEN_DOOR, SERVO_DOOR);
 
-	/* L player turn
-	 * Door open
-	 * Sensor get ready, obtain column number
-	*/
+		// sensor get ready, obtain the column number
+		int column = activate_sensor();
 
-	// play until game end --> human player ends it??
+		// update checker_array
+		update_array(column);
+		check_win(); // if a player win, exit the game??.
+
+
+		//receive input from R player, see begin_request_handler
+		//checker release push
+		rotate_servo(RELEASE_CHECKER, SERVO_PUSH);
+		//sensor get ready
+		column = activate_sensor();
+
+		//door open appropriately
+		update_array(column);
+		open_door_remote(column);
+		check_win();
+
+	}
 
 
 	return 0;
