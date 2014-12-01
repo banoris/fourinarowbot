@@ -10,8 +10,8 @@
 #include <time.h>
 
 /// Angles for doors
-#define DOORS_OPEN_ANGLE 48
-#define DOORS_CLOSED_ANGLE 131
+#define DOORS_OPEN_ANGLE 135
+#define DOORS_CLOSED_ANGLE 48
 
 // We over-rotate the servo by a few degrees and then immediately pull back
 // to the desired rest position. This helps ensure that the mechanism moves
@@ -47,7 +47,7 @@ float angle_to_duty_cycle(int angle)
 
 void doors_open()
 {
-	float duty = angle_to_duty_cycle(DOORS_OPEN_ANGLE - DOOR_OVERROTATION);
+	float duty = angle_to_duty_cycle(DOORS_OPEN_ANGLE + DOOR_OVERROTATION);
     BBBIO_PWMSS_Setting(BBBIO_PWMSS0, FRQ, duty, 0);
 	BBBIO_ehrPWM_Enable(BBBIO_PWMSS0);
 
@@ -71,7 +71,7 @@ void doors_open()
 
 void doors_close()
 {
-	float duty = angle_to_duty_cycle(DOORS_CLOSED_ANGLE + DOOR_OVERROTATION);
+	float duty = angle_to_duty_cycle(DOORS_CLOSED_ANGLE - DOOR_OVERROTATION);
     BBBIO_PWMSS_Setting(BBBIO_PWMSS0, FRQ, duty, 0);
 	BBBIO_ehrPWM_Enable(BBBIO_PWMSS0);
 
