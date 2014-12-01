@@ -1,11 +1,13 @@
 /*
- * BBB_hd44780.c
+ * LCD.c
+ *
+ * Driver for character LCDs based on the HD44780 controller.
  *
  *  Created on: Nov 17, 2014
  *      Author: mcooley
  */
 
-#include "BBB_hd44780.h"
+#include "LCD.h"
 #include "BBBio_lib/BBBiolib.h"
 #include <time.h>
 
