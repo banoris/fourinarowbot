@@ -11,13 +11,13 @@
 #include "LCD.h"
 #include "MotorControl.h"
 #include "Sensors.h"
+#include "NewGameButton.h"
 #include "BBBio_lib/BBBiolib.h"
 //#include "mongoose.h"
 
 // Temporary; remove when random opponent play is removed
 #include <time.h>
 #include <stdlib.h>
-
 
 static const char *html_form =
   "<html><body>POST example."
@@ -26,6 +26,10 @@ static const char *html_form =
   "<input type=\"submit\" />"
   "</form></body></html>";
 
+// Used for game reset logic
+int game_finished = 0;
+pthread_mutex_t game_finished_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t game_finished_condition  = PTHREAD_COND_INITIALIZER;
 
 void reset_button()
 {
@@ -175,17 +179,25 @@ int check_and_report_win()
 {
 	int winner = game_won();
 
-	if (winner == 1)
+	if (winner != 0)
 	{
 		lcd_clear();
-		lcd_write_string("You won!");
 		lcd_set_backlight(0, 0, 128);
-	}
-	else if (winner == 2)
-	{
-		lcd_clear();
-		lcd_write_string("You lost!");
-		lcd_set_backlight(0, 0, 128);
+
+		if (winner == 1)
+		{
+			lcd_write_string("You won!");
+		}
+		else if (winner == 2)
+		{
+			lcd_write_string("You lost!");
+		}
+
+		// Wait for 5s so the player can see the message, then end
+		struct timespec sleep_time;
+		sleep_time.tv_sec = 5;
+		sleep_time.tv_nsec = 0;
+		clock_nanosleep(CLOCK_MONOTONIC, 0, &sleep_time, NULL);
 	}
 
 	return winner;
@@ -193,10 +205,18 @@ int check_and_report_win()
 
 void play_game()
 {
-	// TODO:remove
-	srand(time(NULL));
-
 	game_state_initialize();
+
+	lcd_clear();
+	lcd_write_string("Let's play!");
+	lcd_set_backlight(0, 0, 128);
+
+	// Sleep for 5s
+	struct timespec sleep_time;
+	sleep_time.tv_sec = 5;
+	sleep_time.tv_nsec = 0;
+	clock_nanosleep(CLOCK_MONOTONIC, 0, &sleep_time, NULL);
+
 	int moveNum;
 	while (1)
 	{
@@ -221,6 +241,42 @@ void play_game()
 		random_opponent_play();
 		if (check_and_report_win()) return;
 	}
+
+	return; // Should never get here
+}
+
+void* game_thread()
+{
+	play_game();
+
+	pthread_mutex_lock(&game_finished_mutex);
+	game_finished = 1;
+    pthread_cond_signal(&game_finished_condition);
+    pthread_mutex_unlock(&game_finished_mutex);
+
+    return 0;
+}
+
+void* game_reset_thread()
+{
+	while (1)
+	{
+		if (new_game_button_pressed())
+		{
+			pthread_mutex_lock(&game_finished_mutex);
+			game_finished = 1;
+		    pthread_cond_signal(&game_finished_condition);
+		    pthread_mutex_unlock(&game_finished_mutex);
+		}
+
+		// Sleep for 100ms
+		struct timespec sleep_time;
+		sleep_time.tv_sec = 0;
+		sleep_time.tv_nsec = 100000000;
+		clock_nanosleep(CLOCK_MONOTONIC, 0, &sleep_time, NULL);
+	}
+
+	return 0; // Should never get here
 }
 
 int main(void)
@@ -229,43 +285,51 @@ int main(void)
 	iolib_init();
 	sensors_initialize();
 	lcd_initialize();
+	new_game_button_initialize();
 
-	//pthread_t server_t;
-	//int err;
-	//int game_end;
+	// TODO:remove
+	srand(time(NULL));
 
-	//err = pthread_create(&server_t, NULL, server_thread, NULL);
+	int err;
+	pthread_t watchdog_pthread;
+	pthread_t game_pthread;
 
-	play_game();
+	// Launch a thread to monitor the new game button
+	err = pthread_create(&watchdog_pthread, NULL, game_reset_thread, NULL);
+	if (err)
+	{
+		lcd_clear();
+		lcd_write_string("Error!");
+		lcd_set_backlight(128, 0, 0);
+		return 0;
+	}
 
-	//while(1) {
+	while (1)
+	{
+		// Start a new game
+		err = pthread_create(&game_pthread, NULL, game_thread, NULL);
+		if (err)
+		{
+			lcd_clear();
+			lcd_write_string("Error!");
+			lcd_set_backlight(128, 0, 0);
+			return 0;
+		}
 
-		// let say L player start first
-/*
-		// open door
-		rotate_servo(OPEN_DOOR, SERVO_DOOR);
+		// Game restarts after one has finished or the new game button
+		// has been pressed.
+		pthread_mutex_lock( &game_finished_mutex );
+	    while (!game_finished)
+	    {
+	    	pthread_cond_wait( &game_finished_condition, &game_finished_mutex );
+	    }
+	    game_finished = 0;
+	    pthread_mutex_unlock( &game_finished_mutex );
 
-		// sensor get ready, obtain the column number
-		int column = activate_sensor();
-
-		// update checker_array
-		update_array(column);
-		check_win(); // if a player win, exit the game??.
-
-
-		//receive input from R player, see begin_request_handler
-		//checker release push
-		rotate_servo(RELEASE_CHECKER, SERVO_PUSH);
-		//sensor get ready
-		column = activate_sensor();
-
-		//door open appropriately
-		update_array(column);
-		open_door_remote(column);
-		check_win();
-*/
-	//}
-
+	    // If necessary, cancel the current game
+	    pthread_cancel(game_pthread);
+	    pthread_join(game_pthread, NULL);
+	}
 
 	return 0;
 }
