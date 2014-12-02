@@ -5,37 +5,18 @@
  *
  */
 
-
 #include <stdio.h>
 #include <pthread.h>
-#include "BBB_hd44780.h"
+#include "GameState.h"
+#include "LCD.h"
+#include "MotorControl.h"
+#include "Sensors.h"
 #include "BBBio_lib/BBBiolib.h"
-#include "mongoose.h"
+//#include "mongoose.h"
 
-
-/* Servo values for TG9 servos: */
-/* Servo 0 degree angle pulse high time in msec */
-#define SRV_0    0.45
-/* Servo 180 degree angle pulse high time in msec */
-#define SRV_180  2.45
-
-/* Pulse repetition frequency in Hz */
-#define FRQ 50.0f
-/* Pulse period in msec */
-#define PER (1.0E3/FRQ)
-
-/*TODO Find the appropriate angle */
-#define RELEASE_CHECKER 23
-#define OPEN_DOOR 23
-#define SERVO_PUSH 1
-#define SERVO_DOOR 2
-
-int checker_array[5][6] = { {0, 0, 0, 0, 0, 0, 0},
-							{0, 0, 0, 0, 0, 0, 0},
-							{0, 0, 0, 0, 0, 0, 0},
-							{0, 0, 0, 0, 0, 0, 0},
-							{0, 0, 0, 0, 0, 0, 0},
-							{0, 0, 0, 0, 0, 0, 0}};
+// Temporary; remove when random opponent play is removed
+#include <time.h>
+#include <stdlib.h>
 
 
 static const char *html_form =
@@ -46,109 +27,16 @@ static const char *html_form =
   "</form></body></html>";
 
 
-/*
-	check if win or not
-*/
-
-int check_win()
-{
-	int row, column, count;
-
-	// check horizontal
-	for (row = 0; row <= 5; ++row) {
-		// column check up to N-1, because it will check with N with N+1
-		for(column = 0; column <=5; ++column) {
-			if (checker_array[row][column] == checker_array[column+1]) {
-				count++;
-
-
-			}
-		}
-	}
-
-	if (count >=4 ) return 1;
-	// print winner to LCD??
-
-
-	count = 0; // reset counter
-	//check vertical
-	for(column = 0; column <=6; column++) {
-		for(row = 0; row <=4; row++) {
-			if(checker_array[row][column] == checker_array[row+1][column]) count++;
-		}
-	}
-
-	if (count >= 4) return 1;
-
-	// TODO check diagonal
-
-
-
-	return 0;
-}
-
-
-/*
-	@param i - angle of the servo motor
-	@param motor - door servo or checker pusher servo
-	//TODO - find the angle for opening and closing the door
-*/
-void rotate_servo(const int i, char motor)
-{
-	float SM_1_duty; /* Servomotor 1 , connect to ePWM0A */
-	/* Calculate duty cycle */
-	/* Note: the 100-X duty cyle is to account for the level shifter that inverts */
-	SM_1_duty = 100.0
-			- ((SRV_0 / PER) + (i / 180.0) * ((SRV_180 - SRV_0) / PER)) * 100.0;
-	printf("Angle : %d , duty : %f\n", i, SM_1_duty);
-	BBBIO_PWMSS_Setting(BBBIO_PWMSS0, FRQ, SM_1_duty, SM_1_duty); /* Set up PWM */
-	BBBIO_ehrPWM_Enable(BBBIO_PWMSS0); /* Enable PWM, generate waveform */
-	sleep(1); /* Allow time for servo to settle and for humans to see something. */
-	BBBIO_ehrPWM_Disable(BBBIO_PWMSS0); /* Disable PWM, stop generating waveform */
-}
-
-
-void open_door_remote(int sensor_column)
-{
-	int stop = 0;
-
-	// keep reading sensor until we get the appropriate column
-	while(stop != 1) {
-
-		if (activate_sensor() == sensor_column) {
-				rotate_servo(OPEN_DOOR, SERVO_DOOR);
-				stop = 1;
-		}
-
-	}
-
-}
-
-/*
- * Activate sensors and poll
- * @ return - the position of the sensor e.g. column 3
-*/
-
-int activate_sensor()
-{
-	int sensor_column;
-	// poll sensor
-
-
-	return sensor_column; // return which sensor is blocked
-}
-
-
 void reset_button()
 {
-	// map button to pin
+	// TODO
 
 	exit(-1); // terminate program??
 
 
 }
 
-
+/*
 static int begin_request_handler(struct mg_connection *conn) {
   const struct mg_request_info *ri = mg_get_request_info(conn);
   char post_data[1024], input[sizeof(post_data)];
@@ -194,41 +82,166 @@ static void *server_thread(void *arg)
 
 	return NULL;
 }
+*/
 
-/*
- * Used to update the checker_array properly
- * @param column_n - column number read from the sensor for human player and from webpage for remote player
- *
- *
- * */
-
-void update_array(int column_n)
+int detect_human_play()
 {
-	int i = 0;
-
-	// 6 -- row number
-	// iterate from top row to bottom row
-	for (i = 0; i <= 5; ++i) {
-		if (checker_array[i][column_n] == 1) {
-			checker_array[i-1][column_n] = 1; // set the position as filled with checker
+	doors_open();
+	int placing = 0;
+	while (1)
+	{
+		int col = sense_chip_position();
+		if (col != 0)
+		{
+			placing = col;
 		}
+		else if (col == 0 && placing != 0)
+		{
+			// A chip has been placed
+			doors_close();
+			return placing;
+		}
+
+		// Sleep for 10ms
+		struct timespec sleep_time;
+		sleep_time.tv_sec = 0;
+		sleep_time.tv_nsec = 10000000;
+		clock_nanosleep(CLOCK_MONOTONIC, 0, &sleep_time, NULL);
+	}
+
+	return -1; // Should never get here
+}
+
+void drop_checker(int targetColumn)
+{
+	doors_close();
+
+	while (1)
+	{
+		if (sense_chip_position() == targetColumn)
+		{
+			doors_open();
+
+			// Wait for the chip to clear
+			while (sense_chip_position() == targetColumn)
+			{
+				// Sleep for 10ms
+				struct timespec sleep_time;
+				sleep_time.tv_sec = 0;
+				sleep_time.tv_nsec = 10000000;
+				clock_nanosleep(CLOCK_MONOTONIC, 0, &sleep_time, NULL);
+			}
+			doors_close();
+			return;
+		}
+
+		// Sleep for 10ms
+		struct timespec sleep_time;
+		sleep_time.tv_sec = 0;
+		sleep_time.tv_nsec = 10000000;
+		clock_nanosleep(CLOCK_MONOTONIC, 0, &sleep_time, NULL);
 	}
 }
 
+void random_opponent_play()
+{
+	int moveNum = get_current_game_state().moveNumber;
+
+	int column, result;
+
+	do
+	{
+		column = (rand() % 7) + 1;
+		result = record_move(2, column, moveNum);
+	}
+	while (result == ERR_COLUMN_FULL);
+
+	if (result < 0)
+	{
+		lcd_write_string("Error!");
+		return;
+	}
+
+	char msg[] = "Opponent playing\nat column x";
+	msg[27] = (char)column + '0';
+	lcd_clear();
+	lcd_write_string(msg);
+	lcd_set_backlight(128, 0, 0);
+
+	drop_checker(column);
+}
+
+int check_and_report_win()
+{
+	int winner = game_won();
+
+	if (winner == 1)
+	{
+		lcd_clear();
+		lcd_write_string("You won!");
+		lcd_set_backlight(0, 0, 128);
+	}
+	else if (winner == 2)
+	{
+		lcd_clear();
+		lcd_write_string("You lost!");
+		lcd_set_backlight(0, 0, 128);
+	}
+
+	return winner;
+}
+
+void play_game()
+{
+	// TODO:remove
+	srand(time(NULL));
+
+	game_state_initialize();
+	int moveNum;
+	while (1)
+	{
+		moveNum = get_current_game_state().moveNumber;
+		lcd_clear();
+		lcd_write_string("Your turn!\nPlace a checker.");
+		lcd_set_backlight(128, 128, 0);
+
+		int column = detect_human_play();
+
+		int result = record_move(1, column, moveNum);
+
+		if (result < 0)
+		{
+			lcd_clear();
+			lcd_write_string("Error!");
+			lcd_set_backlight(128, 0, 0);
+			return;
+		}
+
+		if (check_and_report_win()) return;
+		random_opponent_play();
+		if (check_and_report_win()) return;
+	}
+}
 
 int main(void)
 {
-	pthread_t server_t;
-	int err;
-	int game_end;
+	// Initialize the hardware
+	iolib_init();
+	sensors_initialize();
+	lcd_initialize();
 
-	err = pthread_create(&server_t, NULL, server_thread, NULL);
+	//pthread_t server_t;
+	//int err;
+	//int game_end;
 
+	//err = pthread_create(&server_t, NULL, server_thread, NULL);
 
-	while(1) {
+	play_game();
+
+	//while(1) {
 
 		// let say L player start first
-
+/*
 		// open door
 		rotate_servo(OPEN_DOOR, SERVO_DOOR);
 
@@ -250,8 +263,8 @@ int main(void)
 		update_array(column);
 		open_door_remote(column);
 		check_win();
-
-	}
+*/
+	//}
 
 
 	return 0;
