@@ -31,15 +31,6 @@ int game_finished = 0;
 pthread_mutex_t game_finished_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t game_finished_condition  = PTHREAD_COND_INITIALIZER;
 
-void reset_button()
-{
-	// TODO
-
-	exit(-1); // terminate program??
-
-
-}
-
 /*
 static int begin_request_handler(struct mg_connection *conn) {
   const struct mg_request_info *ri = mg_get_request_info(conn);
@@ -102,7 +93,6 @@ int detect_human_play()
 		else if (col == 0 && placing != 0)
 		{
 			// A chip has been placed
-			doors_close();
 			return placing;
 		}
 
@@ -149,6 +139,8 @@ void drop_checker(int targetColumn)
 
 void random_opponent_play()
 {
+	doors_close();
+
 	int moveNum = get_current_game_state().moveNumber;
 
 	int column, result;
@@ -208,17 +200,17 @@ void play_game()
 	game_state_initialize();
 
 	lcd_clear();
-	lcd_write_string("Let's play!");
+	lcd_write_string("New game started\nLet's play!");
 	lcd_set_backlight(0, 0, 128);
 
 	// Sleep for 5s
-	struct timespec sleep_time;
-	sleep_time.tv_sec = 5;
-	sleep_time.tv_nsec = 0;
-	clock_nanosleep(CLOCK_MONOTONIC, 0, &sleep_time, NULL);
+	struct timespec message_time;
+	message_time.tv_sec = 5;
+	message_time.tv_nsec = 0;
+	clock_nanosleep(CLOCK_MONOTONIC, 0, &message_time, NULL);
 
-	int moveNum;
-	while (1)
+	int moveNum = -1;
+	while (moveNum <= LAST_MOVE)
 	{
 		moveNum = get_current_game_state().moveNumber;
 		lcd_clear();
@@ -232,8 +224,11 @@ void play_game()
 		if (result < 0)
 		{
 			lcd_clear();
-			lcd_write_string("Error!");
+			lcd_write_string("Invalid move.\nStopping game.");
 			lcd_set_backlight(128, 0, 0);
+
+			// Wait for 5s so the player can see the message, then end
+			clock_nanosleep(CLOCK_MONOTONIC, 0, &message_time, NULL);
 			return;
 		}
 
@@ -242,7 +237,14 @@ void play_game()
 		if (check_and_report_win()) return;
 	}
 
-	return; // Should never get here
+	lcd_clear();
+	lcd_write_string("It's a draw!");
+	lcd_set_backlight(0, 0, 128);
+
+	// Wait for 5s so the player can see the message, then end
+	clock_nanosleep(CLOCK_MONOTONIC, 0, &message_time, NULL);
+
+	return;
 }
 
 void* game_thread()
@@ -299,7 +301,7 @@ int main(void)
 	if (err)
 	{
 		lcd_clear();
-		lcd_write_string("Error!");
+		lcd_write_string("Internal error\ncouldn't start");
 		lcd_set_backlight(128, 0, 0);
 		return 0;
 	}
@@ -311,7 +313,7 @@ int main(void)
 		if (err)
 		{
 			lcd_clear();
-			lcd_write_string("Error!");
+			lcd_write_string("Internal error\ncouldn't start");
 			lcd_set_backlight(128, 0, 0);
 			return 0;
 		}

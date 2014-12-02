@@ -35,6 +35,9 @@ struct game_state get_current_game_state();
 #define ERR_INVALID_PLAYER -4 // Player does not exist
 #define ERR_INVALID_COLUMN -5 // Column does not exist
 
+/// When the move number is greater than this, the board is full
+#define LAST_MOVE 41
+
 /**
  * Record that the given player placed a checker in the given column. The
  * move will not be recorded unless the moveNumber is equal to the current
