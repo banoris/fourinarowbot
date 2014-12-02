@@ -36,6 +36,8 @@
 // Pulse period in msec
 #define PER (1.0E3/FRQ)
 
+int doors_opened = -1;
+
 /**
  * Convert an angle (from 0 to 180 degrees) to a duty cycle (from 0 to 100 percent).
  * This math is from BBBIOlib sample code.
@@ -47,7 +49,19 @@ float angle_to_duty_cycle(int angle)
 
 void doors_open()
 {
-	float duty = angle_to_duty_cycle(DOORS_OPEN_ANGLE + DOOR_OVERROTATION);
+	float duty;
+	int overrotating;
+	if (doors_opened != 1)
+	{
+		duty = angle_to_duty_cycle(DOORS_OPEN_ANGLE + DOOR_OVERROTATION);
+		overrotating = 1;
+	}
+	else
+	{
+		duty = angle_to_duty_cycle(DOORS_OPEN_ANGLE);
+		overrotating = 0;
+	}
+
     BBBIO_PWMSS_Setting(BBBIO_PWMSS0, FRQ, duty, 0);
 	BBBIO_ehrPWM_Enable(BBBIO_PWMSS0);
 
@@ -57,21 +71,39 @@ void doors_open()
 	clock_nanosleep(CLOCK_MONOTONIC, 0, &open_time, NULL);
 
 	BBBIO_ehrPWM_Disable(BBBIO_PWMSS0);
-	duty = angle_to_duty_cycle(DOORS_OPEN_ANGLE);
-    BBBIO_PWMSS_Setting(BBBIO_PWMSS0, FRQ, duty, 0);
-	BBBIO_ehrPWM_Enable(BBBIO_PWMSS0);
 
-	struct timespec rest_time;
-	rest_time.tv_sec = 0;
-	rest_time.tv_nsec = DOOR_REST_TIME_NS;
-	clock_nanosleep(CLOCK_MONOTONIC, 0, &rest_time, NULL);
+	if (overrotating)
+	{
+		duty = angle_to_duty_cycle(DOORS_OPEN_ANGLE);
+		BBBIO_PWMSS_Setting(BBBIO_PWMSS0, FRQ, duty, 0);
+		BBBIO_ehrPWM_Enable(BBBIO_PWMSS0);
 
-	BBBIO_ehrPWM_Disable(BBBIO_PWMSS0);
+		struct timespec rest_time;
+		rest_time.tv_sec = 0;
+		rest_time.tv_nsec = DOOR_REST_TIME_NS;
+		clock_nanosleep(CLOCK_MONOTONIC, 0, &rest_time, NULL);
+
+		BBBIO_ehrPWM_Disable(BBBIO_PWMSS0);
+	}
+
+	doors_opened = 1;
 }
 
 void doors_close()
 {
-	float duty = angle_to_duty_cycle(DOORS_CLOSED_ANGLE - DOOR_OVERROTATION);
+	float duty;
+	int overrotating;
+	if (doors_opened != 0)
+	{
+		duty = angle_to_duty_cycle(DOORS_CLOSED_ANGLE - DOOR_OVERROTATION);
+		overrotating = 1;
+	}
+	else
+	{
+		duty = angle_to_duty_cycle(DOORS_CLOSED_ANGLE);
+		overrotating = 0;
+	}
+
     BBBIO_PWMSS_Setting(BBBIO_PWMSS0, FRQ, duty, 0);
 	BBBIO_ehrPWM_Enable(BBBIO_PWMSS0);
 
@@ -81,14 +113,20 @@ void doors_close()
 	clock_nanosleep(CLOCK_MONOTONIC, 0, &close_time, NULL);
 
 	BBBIO_ehrPWM_Disable(BBBIO_PWMSS0);
-	duty = angle_to_duty_cycle(DOORS_CLOSED_ANGLE);
-    BBBIO_PWMSS_Setting(BBBIO_PWMSS0, FRQ, duty, 0);
-	BBBIO_ehrPWM_Enable(BBBIO_PWMSS0);
 
-	struct timespec rest_time;
-	rest_time.tv_sec = 0;
-	rest_time.tv_nsec = DOOR_REST_TIME_NS;
-	clock_nanosleep(CLOCK_MONOTONIC, 0, &rest_time, NULL);
+	if (overrotating)
+	{
+		duty = angle_to_duty_cycle(DOORS_CLOSED_ANGLE);
+		BBBIO_PWMSS_Setting(BBBIO_PWMSS0, FRQ, duty, 0);
+		BBBIO_ehrPWM_Enable(BBBIO_PWMSS0);
 
-	BBBIO_ehrPWM_Disable(BBBIO_PWMSS0);
+		struct timespec rest_time;
+		rest_time.tv_sec = 0;
+		rest_time.tv_nsec = DOOR_REST_TIME_NS;
+		clock_nanosleep(CLOCK_MONOTONIC, 0, &rest_time, NULL);
+
+		BBBIO_ehrPWM_Disable(BBBIO_PWMSS0);
+	}
+
+	doors_opened = 0;
 }
