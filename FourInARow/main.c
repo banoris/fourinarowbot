@@ -13,7 +13,7 @@
 #include "Sensors.h"
 #include "NewGameButton.h"
 #include "BBBio_lib/BBBiolib.h"
-//#include "mongoose.h"
+#include "mongoose.h"
 
 // Temporary; remove when random opponent play is removed
 #include <time.h>
@@ -31,11 +31,12 @@ int game_finished = 0;
 pthread_mutex_t game_finished_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t game_finished_condition  = PTHREAD_COND_INITIALIZER;
 
-/*
+
 static int begin_request_handler(struct mg_connection *conn) {
   const struct mg_request_info *ri = mg_get_request_info(conn);
   char post_data[1024], input[sizeof(post_data)];
   int post_data_len;
+  int err;
 
   if (!strcmp(ri->uri, "/handle_post_request")) {
     // User has submitted a form, show submitted data and a variable value
@@ -48,7 +49,14 @@ static int begin_request_handler(struct mg_connection *conn) {
 
     update_array(column); // update the checker array from the received input
 
-    // check user input i.e. the column number
+    // Parse form data
+    mg_get_var(post_data, post_data_len, "input_1", input, sizeof(input));
+
+    int column = atoi(input); // get the column number
+
+    // record the column
+    int moveNum = get_current_game_state().moveNumber;
+    err = record_move(2, column, moveNum);
 
 
   } else {
@@ -62,22 +70,6 @@ static int begin_request_handler(struct mg_connection *conn) {
 }
 
 
-static void *server_thread(void *arg)
-{
-	struct mg_context *ctx;
-	const char *options[] = {"listening_port", "8080", NULL};
-
-	struct mg_callbacks callbacks; // Called when mongoose has received new HTTP request
-	memset(&callbacks, 0, sizeof(callbacks));
-	callbacks.begin_request = begin_request_handler;
-
-	ctx = mg_start(&callbacks, NULL, options);
-	getchar(); // press enter to stop
-	mg_stop(ctx);
-
-	return NULL;
-}
-*/
 
 int detect_human_play()
 {
@@ -305,6 +297,15 @@ int main(void)
 		lcd_set_backlight(128, 0, 0);
 		return 0;
 	}
+
+	struct mg_context *ctx;
+	const char *options[] = {"listening_ports", "8080", NULL};
+
+	struct mg_callbacks callbacks; // Called when mongoose has received new HTTP request
+	memset(&callbacks, 0, sizeof(callbacks));
+	callbacks.begin_request = begin_request_handler;
+
+	ctx = mg_start(&callbacks, NULL, options);
 
 	while (1)
 	{
