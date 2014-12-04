@@ -21,15 +21,15 @@
 		border-radius:30px;
 		margin:5px 10px 5px 10px;
 		background-color:#669;
-		transition: background-color 0.25s ease;
+		transition: background-color 0.5s ease;
 	}
-
+	
 	#c4 span.p1 {
-		background-color:#f00;
-	}
-
-	#c4 span.p2 {
 		background-color:#ff0;
+	}
+	
+	#c4 span.p2 {
+		background-color:#f00;
 	}
 
 	#controls {
@@ -68,15 +68,15 @@
 	#message-area {
 		font-size:1.2em;
 		font-family:sans-serif;
+		margin:15px;
 	}
 	</style>
+	<script src="/jquery-2.1.1.min.js" defer></script>
+	<script src="/game.js" defer></script>
 </head>
 <body>
 
-<div id="message-area">
-	<!--<p>It's their turn. Waiting for them to move...</p>-->
-	<p>Your turn! Drop your chip in any open column.</p>
-</div>
+<div id="message-area"></div>
 
 <div id="controls">
 <form method="POST" action="/game_state">
@@ -97,7 +97,7 @@
 	<div class="c4-row"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
 	<div class="c4-row"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
 	<div class="c4-row"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
-	<div class="c4-row"><span class="p1"></span><span class="p2"></span><span></span><span></span><span></span><span></span><span></span></div>
+	<div class="c4-row"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
 </div>
 
 <h1>Four-in-a-Row Bot</h1>

@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <pthread.h>
 #include <string.h>
+#include <stdlib.h>
 #include <sys/types.h>
 #include <ifaddrs.h>
 #include <sys/socket.h>
@@ -20,17 +21,13 @@
 #include "BBBio_lib/BBBiolib.h"
 #include "mongoose.h"
 
-// Temporary; remove when random opponent play is removed
-#include <time.h>
-#include <stdlib.h>
-
 // Used for game reset logic
 int game_finished = 0;
 pthread_mutex_t game_finished_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t game_finished_condition  = PTHREAD_COND_INITIALIZER;
 
 // Used to signal that the remote opponent has requested a play
-int remote_column = 0;
+int remote_column = -1;
 pthread_mutex_t remote_column_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t remote_column_condition  = PTHREAD_COND_INITIALIZER;
 
@@ -181,54 +178,24 @@ void remote_opponent_play()
 	doors_close();
 
 	lcd_clear();
-	lcd_write_string("Opponent's turn\nwaiting...");
+	lcd_write_string("Opponent's turn.\nwaiting...");
 	lcd_set_backlight(128, 0, 0);
 
 	int column;
 
 	pthread_mutex_lock(&remote_column_mutex);
-    while (!remote_column)
+    while (remote_column == -1)
     {
     	pthread_cond_wait(&remote_column_condition, &remote_column_mutex);
     }
     column = remote_column;
-    remote_column = 0;
+    remote_column = -1;
     pthread_mutex_unlock(&remote_column_mutex);
 
 	char msg[] = "Opponent playing\nat column x";
 	msg[27] = (char)column + '0';
 	lcd_clear();
 	lcd_write_string(msg);
-
-	drop_checker(column);
-}
-
-void random_opponent_play()
-{
-	doors_close();
-
-	int moveNum = get_current_game_state().moveNumber;
-
-	int column, result;
-
-	do
-	{
-		column = (rand() % 7) + 1;
-		result = record_move(2, column, moveNum);
-	}
-	while (result == ERR_COLUMN_FULL);
-
-	if (result < 0)
-	{
-		lcd_write_string("Error!");
-		return;
-	}
-
-	char msg[] = "Opponent playing\nat column x";
-	msg[27] = (char)column + '0';
-	lcd_clear();
-	lcd_write_string(msg);
-	lcd_set_backlight(128, 0, 0);
 
 	drop_checker(column);
 }
@@ -395,9 +362,6 @@ int main(void)
 	lcd_initialize();
 	new_game_button_initialize();
 
-	// TODO:remove
-	srand(time(NULL));
-
 	int err;
 	pthread_t watchdog_pthread;
 	pthread_t game_pthread;
@@ -447,16 +411,6 @@ int main(void)
 	    // If necessary, cancel the current game
 	    pthread_cancel(game_pthread);
 	    pthread_join(game_pthread, NULL);
-
-	    // We restart the web server for every game. This is a hack
-	    // to workaround the situation where the FourInARow service starts up
-	    // before all the network interfaces are up and have IP addresses. It
-	    // seems that mongoose does not gracefully start accepting connections
-	    // on the interfaces it's listening on once they do come up all the
-	    // way. This gives the user a workaround for now: they can press the
-	    // new game button to restart the server and put things in a working
-	    // state.
-	   // mg_stop(server_context);
 	}
 
 	return 0;
