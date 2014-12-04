@@ -7,6 +7,7 @@
 
 #include <stdio.h>
 #include <pthread.h>
+#include <string.h>
 #include "GameState.h"
 #include "LCD.h"
 #include "MotorControl.h"
@@ -19,57 +20,87 @@
 #include <time.h>
 #include <stdlib.h>
 
-static const char *html_form =
-  "<html><body>POST example."
-  "<form method=\"POST\" action=\"/handle_post_request\">"
-  "Input 1: <input type=\"text\" name=\"input_1\" /> <br/>"
-  "<input type=\"submit\" />"
-  "</form></body></html>";
-
 // Used for game reset logic
 int game_finished = 0;
 pthread_mutex_t game_finished_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t game_finished_condition  = PTHREAD_COND_INITIALIZER;
 
+// Used to signal that the remote opponent has requested a play
+int remote_column = 0;
+pthread_mutex_t remote_column_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t remote_column_condition  = PTHREAD_COND_INITIALIZER;
 
-static int begin_request_handler(struct mg_connection *conn) {
-  const struct mg_request_info *ri = mg_get_request_info(conn);
-  char post_data[1024], input[sizeof(post_data)];
-  int post_data_len;
-  int err;
+const char* game_state_json = "{\"activePlayer\":%d, \"moveNumber\":%d, \"board\":[%s]}";
 
-  if (!strcmp(ri->uri, "/handle_post_request")) {
-    // User has submitted a form, show submitted data and a variable value
-    post_data_len = mg_read(conn, post_data, sizeof(post_data));
+void send_board_state(struct mg_connection *conn)
+{
+	struct game_state state = get_current_game_state();
+	char board_state[6 * 7 * 2];
+	int i = 0;
+	int r, c;
+	for (r = 0; r < 6; ++r)
+	{
+		for (c = 0; c < 7; ++c)
+		{
+			board_state[i] = state.board[r][c] + '0';
+			if (r == 5 && c == 6)
+			{
+				board_state[i + 1] = '\0';
+			}
+			else
+			{
+				board_state[i + 1] = ',';
+			}
+			i += 2;
+		}
+	}
 
-    // Parse form data
-    mg_get_var(post_data, post_data_len, "input_1", input, sizeof(input));
-
-    int column = atoi(input);
-
-    update_array(column); // update the checker array from the received input
-
-    // Parse form data
-    mg_get_var(post_data, post_data_len, "input_1", input, sizeof(input));
-
-    int column = atoi(input); // get the column number
-
-    // record the column
-    int moveNum = get_current_game_state().moveNumber;
-    err = record_move(2, column, moveNum);
-
-
-  } else {
-    // Show HTML form.
-    mg_printf(conn, "HTTP/1.0 200 OK\r\n"
-              "Content-Length: %d\r\n"
-              "Content-Type: text/html\r\n\r\n%s",
-              (int) strlen(html_form), html_form);
-  }
-  return 1;  // Mark request as processed
+	char response[256];
+	int response_length = snprintf(response, sizeof(response), game_state_json,
+			state.activePlayer, state.moveNumber, board_state);
+	mg_printf(conn,
+			"HTTP/1.1 200 OK\r\n"
+			"Content-Length: %d\r\n"
+			"Content-Type: application/json\r\n\r\n"
+			"%s",
+			response_length, response);
 }
 
+int begin_request_handler(struct mg_connection *conn)
+{
+	const struct mg_request_info* ri = mg_get_request_info(conn);
 
+	if (!strcmp(ri->uri, "/game_state"))
+	{
+		if (!strcmp(ri->request_method, "POST"))
+		{
+			char post_data[1024], move_number_str[8], column_str[8];
+			int post_data_length = mg_read(conn, post_data, sizeof(post_data));
+			mg_get_var(post_data, post_data_length, "moveNumber", move_number_str, sizeof(move_number_str));
+			mg_get_var(post_data, post_data_length, "column", column_str, sizeof(column_str));
+
+			int move_number = atoi(move_number_str);
+			int column = atoi(column_str);
+
+			int result = record_move(2, column, move_number);
+			//TODO: Send back the error
+
+			if (result > 0)
+			{
+				// Continue the game thread to place the chip
+				pthread_mutex_lock(&remote_column_mutex);
+				remote_column = column;
+				pthread_cond_signal(&remote_column_condition);
+				pthread_mutex_unlock(&remote_column_mutex);
+			}
+		}
+
+		send_board_state(conn);
+		return 1; // Don't process any further
+	}
+
+	return 0; // Let mongoose serve static files
+}
 
 int detect_human_play()
 {
@@ -102,9 +133,13 @@ void drop_checker(int targetColumn)
 {
 	doors_close();
 
+	int last_pos = -1;
+	int drop_next_sample = 0;
 	while (1)
 	{
-		if (sense_chip_position() == targetColumn)
+		int position = sense_chip_position();
+
+		if (position == targetColumn || drop_next_sample)
 		{
 			doors_open();
 
@@ -121,12 +156,47 @@ void drop_checker(int targetColumn)
 			return;
 		}
 
-		// Sleep for 10ms
+		// Falling edge passing previous column should trigger drop next time
+		if (position == 0 && targetColumn > 1 && last_pos == targetColumn - 1)
+		{
+			drop_next_sample = 1;
+		}
+
+		// Sleep for 30ms
 		struct timespec sleep_time;
 		sleep_time.tv_sec = 0;
-		sleep_time.tv_nsec = 10000000;
+		sleep_time.tv_nsec = 30000000;
 		clock_nanosleep(CLOCK_MONOTONIC, 0, &sleep_time, NULL);
+
+		last_pos = position;
 	}
+}
+
+void remote_opponent_play()
+{
+	doors_close();
+
+	lcd_clear();
+	lcd_write_string("Opponent's turn\nwaiting...");
+	lcd_set_backlight(128, 0, 0);
+
+	int column;
+
+	pthread_mutex_lock(&remote_column_mutex);
+    while (!remote_column)
+    {
+    	pthread_cond_wait(&remote_column_condition, &remote_column_mutex);
+    }
+    column = remote_column;
+    remote_column = 0;
+    pthread_mutex_unlock(&remote_column_mutex);
+
+	char msg[] = "Opponent playing\nat column x";
+	msg[27] = (char)column + '0';
+	lcd_clear();
+	lcd_write_string(msg);
+
+	drop_checker(column);
 }
 
 void random_opponent_play()
@@ -225,7 +295,7 @@ void play_game()
 		}
 
 		if (check_and_report_win()) return;
-		random_opponent_play();
+		remote_opponent_play();
 		if (check_and_report_win()) return;
 	}
 
@@ -298,14 +368,15 @@ int main(void)
 		return 0;
 	}
 
-	struct mg_context *ctx;
-	const char *options[] = {"listening_ports", "8080", NULL};
-
-	struct mg_callbacks callbacks; // Called when mongoose has received new HTTP request
-	memset(&callbacks, 0, sizeof(callbacks));
-	callbacks.begin_request = begin_request_handler;
-
-	ctx = mg_start(&callbacks, NULL, options);
+	// Launch mongoose web server
+	const char *options[] = {
+			"listening_ports", "80",
+			"document_root", "./html",
+			NULL
+		};
+	struct mg_callbacks callbacks = {0};
+	callbacks.begin_request = begin_request_handler; // on HTTP request
+	mg_start(&callbacks, NULL, options);
 
 	while (1)
 	{

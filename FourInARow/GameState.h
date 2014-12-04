@@ -8,9 +8,6 @@
 #ifndef GAMESTATE_H_
 #define GAMESTATE_H_
 
-// Array of checker positions
-// Stack of moves
-
 struct game_state
 {
 	int board[6][7];

@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Four-in-a-Row Bot</title>
+	<style type="text/css">
+	html, body {
+		text-align:center;
+		background-color:#f0f0f0;
+	}
+
+	#c4 {
+		display:inline-block;
+		background-color:#339;
+		padding:10px 20px 10px 20px;
+	}
+
+	#c4 span {
+		display:inline-block;
+		width:60px;
+		height:60px;
+		border-radius:30px;
+		margin:5px 10px 5px 10px;
+		background-color:#669;
+		transition: background-color 0.25s ease;
+	}
+
+	#c4 span.p1 {
+		background-color:#f00;
+	}
+
+	#c4 span.p2 {
+		background-color:#ff0;
+	}
+
+	#controls {
+		margin-bottom:4px;
+	}
+
+	#controls button {
+		box-sizing:border-box;
+		display:inline-block;
+		height:30px;
+		width:66px;
+		margin:5px;
+		background-color:#66f;
+		border:2px solid #33f;
+		color:#f0f0f0;
+		border-radius:5px;
+		font-size:16px;
+	}
+
+	#controls button:hover {
+		background-color:#77f;
+	}
+
+	#controls button[disabled] {
+		border:none;
+		background-color:#aaf;
+	}
+
+	h1 {
+		color:#999;
+		font-family:sans-serif;
+		font-size:3em;
+		font-weight:normal;
+	}
+
+	#message-area {
+		font-size:1.2em;
+		font-family:sans-serif;
+	}
+	</style>
+</head>
+<body>
+
+<div id="message-area">
+	<!--<p>It's their turn. Waiting for them to move...</p>-->
+	<p>Your turn! Drop your chip in any open column.</p>
+</div>
+
+<div id="controls">
+<form method="POST" action="/game_state">
+	<input type="hidden" name="moveNumber" value="1" />
+	<button name="column" value="1">Drop</button>
+	<button name="column" value="2">Drop</button>
+	<button name="column" value="3">Drop</button>
+	<button name="column" value="4">Drop</button>
+	<button name="column" value="5">Drop</button>
+	<button name="column" value="6">Drop</button>
+	<button name="column" value="7">Drop</button>
+</form>
+</div>
+
+<div id="c4">
+	<div class="c4-row"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+	<div class="c4-row"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+	<div class="c4-row"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+	<div class="c4-row"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+	<div class="c4-row"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+	<div class="c4-row"><span class="p1"></span><span class="p2"></span><span></span><span></span><span></span><span></span><span></span></div>
+</div>
+
+<h1>Four-in-a-Row Bot</h1>
+
+</body>
+</html>
