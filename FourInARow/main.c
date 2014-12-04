@@ -8,6 +8,10 @@
 #include <stdio.h>
 #include <pthread.h>
 #include <string.h>
+#include <sys/types.h>
+#include <ifaddrs.h>
+#include <sys/socket.h>
+#include <netdb.h>
 #include "GameState.h"
 #include "LCD.h"
 #include "MotorControl.h"
@@ -257,19 +261,59 @@ int check_and_report_win()
 	return winner;
 }
 
+void print_welcome()
+{
+	lcd_clear();
+	lcd_set_backlight(0, 0, 128);
+	lcd_write_string("Let's play!\nNew game started");
+
+	// Sleep for 2s
+	struct timespec message_time;
+	message_time.tv_sec = 2;
+	message_time.tv_nsec = 0;
+	clock_nanosleep(CLOCK_MONOTONIC, 0, &message_time, NULL);
+
+	// Print IP address
+	struct ifaddrs* if_head;
+	struct ifaddrs* if_cur;
+	char host[NI_MAXHOST];
+	if (getifaddrs(&if_head) != -1)
+	{
+	    for (if_cur = if_head; if_cur != NULL; if_cur = if_cur->ifa_next)
+	    {
+	        if (if_cur->ifa_addr != NULL)
+	        {
+		        if (getnameinfo(if_cur->ifa_addr, sizeof(struct sockaddr_in), host, NI_MAXHOST, NULL, 0, NI_NUMERICHOST) == 0)
+		        {
+		        	// Ignore localhost
+			        if(if_cur->ifa_addr->sa_family == AF_INET && strcmp(if_cur->ifa_name, "lo"))
+			        {
+			        	char message[40];
+			        	snprintf(message, sizeof(message), "Let's play!\n%s", host);
+			        	lcd_clear();
+			        	lcd_write_string(message);
+
+			        	// Sleep for 3s
+			        	struct timespec message_time;
+			        	message_time.tv_sec = 3;
+			        	message_time.tv_nsec = 0;
+			        	clock_nanosleep(CLOCK_MONOTONIC, 0, &message_time, NULL);
+			        }
+		        }
+	        }
+	    }
+	}
+}
+
 void play_game()
 {
 	game_state_initialize();
 
-	lcd_clear();
-	lcd_write_string("New game started\nLet's play!");
-	lcd_set_backlight(0, 0, 128);
+	print_welcome();
 
-	// Sleep for 5s
 	struct timespec message_time;
 	message_time.tv_sec = 5;
 	message_time.tv_nsec = 0;
-	clock_nanosleep(CLOCK_MONOTONIC, 0, &message_time, NULL);
 
 	int moveNum = -1;
 	while (moveNum <= LAST_MOVE)
@@ -371,7 +415,7 @@ int main(void)
 	// Launch mongoose web server
 	const char *options[] = {
 			"listening_ports", "80",
-			"document_root", "./html",
+			"document_root", "/root/html",
 			NULL
 		};
 	struct mg_callbacks callbacks = {0};
@@ -403,6 +447,16 @@ int main(void)
 	    // If necessary, cancel the current game
 	    pthread_cancel(game_pthread);
 	    pthread_join(game_pthread, NULL);
+
+	    // We restart the web server for every game. This is a hack
+	    // to workaround the situation where the FourInARow service starts up
+	    // before all the network interfaces are up and have IP addresses. It
+	    // seems that mongoose does not gracefully start accepting connections
+	    // on the interfaces it's listening on once they do come up all the
+	    // way. This gives the user a workaround for now: they can press the
+	    // new game button to restart the server and put things in a working
+	    // state.
+	   // mg_stop(server_context);
 	}
 
 	return 0;
