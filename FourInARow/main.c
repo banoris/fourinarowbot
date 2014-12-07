@@ -134,6 +134,8 @@ void drop_checker(int targetColumn)
 {
 	doors_close();
 
+	dropper_forward();
+
 	int last_pos = -1;
 	int drop_next_sample = 0;
 	while (1)
@@ -154,6 +156,7 @@ void drop_checker(int targetColumn)
 				clock_nanosleep(CLOCK_MONOTONIC, 0, &sleep_time, NULL);
 			}
 			doors_close();
+			dropper_retract();
 			return;
 		}
 
@@ -340,7 +343,7 @@ void* game_reset_thread()
 		{
 			pthread_mutex_lock(&game_finished_mutex);
 			game_finished = 1;
-		    pthread_cond_signal(&game_finished_condition);
+			pthread_cond_signal(&game_finished_condition);
 		    pthread_mutex_unlock(&game_finished_mutex);
 		}
 

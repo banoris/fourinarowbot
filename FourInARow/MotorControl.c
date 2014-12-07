@@ -12,6 +12,8 @@
 /// Angles for doors
 #define DOORS_OPEN_ANGLE 135
 #define DOORS_CLOSED_ANGLE 48
+#define DROPPER_RETRACTED_ANGLE 135
+#define DROPPER_FORWARD_ANGLE 65
 
 // We over-rotate the servo by a few degrees and then immediately pull back
 // to the desired rest position. This helps ensure that the mechanism moves
@@ -25,6 +27,7 @@
 #define DOOR_OPEN_TIME_NS 400000000 // 400ms
 #define DOOR_CLOSE_TIME_NS 400000000 // 400ms
 #define DOOR_REST_TIME_NS 100000000 // 100ms
+#define DROPPER_MOVE_TIME_NS 600000000 // 600ms
 
 /// Servo values for TG9 servos
 // 0 degree angle pulse high time in msec
@@ -38,6 +41,10 @@
 
 int doors_opened = -1;
 
+//TODO: mutex to keep the doors from rotating at the same time
+int current_door_angle = DOORS_OPEN_ANGLE;
+int current_dropper_angle = DROPPER_RETRACTED_ANGLE;
+
 /**
  * Convert an angle (from 0 to 180 degrees) to a duty cycle (from 0 to 100 percent).
  * This math is from BBBIOlib sample code.
@@ -47,23 +54,30 @@ float angle_to_duty_cycle(int angle)
 	return 100.0 - ((SRV_0 / PER) + (angle / 180.0) * ((SRV_180 - SRV_0) / PER)) * 100.0;
 }
 
+void start_pwm()
+{
+	float door = angle_to_duty_cycle(current_door_angle);
+	float dropper = angle_to_duty_cycle(current_dropper_angle);
+    BBBIO_PWMSS_Setting(BBBIO_PWMSS0, FRQ, door, dropper);
+	BBBIO_ehrPWM_Enable(BBBIO_PWMSS0);
+}
+
 void doors_open()
 {
 	float duty;
 	int overrotating;
 	if (doors_opened != 1)
 	{
-		duty = angle_to_duty_cycle(DOORS_OPEN_ANGLE + DOOR_OVERROTATION);
+		current_door_angle = DOORS_OPEN_ANGLE + DOOR_OVERROTATION;
 		overrotating = 1;
 	}
 	else
 	{
-		duty = angle_to_duty_cycle(DOORS_OPEN_ANGLE);
+		current_door_angle = DOORS_OPEN_ANGLE;
 		overrotating = 0;
 	}
 
-    BBBIO_PWMSS_Setting(BBBIO_PWMSS0, FRQ, duty, 0);
-	BBBIO_ehrPWM_Enable(BBBIO_PWMSS0);
+	start_pwm();
 
 	struct timespec open_time;
 	open_time.tv_sec = 0;
@@ -74,9 +88,8 @@ void doors_open()
 
 	if (overrotating)
 	{
-		duty = angle_to_duty_cycle(DOORS_OPEN_ANGLE);
-		BBBIO_PWMSS_Setting(BBBIO_PWMSS0, FRQ, duty, 0);
-		BBBIO_ehrPWM_Enable(BBBIO_PWMSS0);
+		current_door_angle = DOORS_OPEN_ANGLE;
+		start_pwm();
 
 		struct timespec rest_time;
 		rest_time.tv_sec = 0;
@@ -95,17 +108,16 @@ void doors_close()
 	int overrotating;
 	if (doors_opened != 0)
 	{
-		duty = angle_to_duty_cycle(DOORS_CLOSED_ANGLE - DOOR_OVERROTATION);
+		current_door_angle = DOORS_CLOSED_ANGLE - DOOR_OVERROTATION;
 		overrotating = 1;
 	}
 	else
 	{
-		duty = angle_to_duty_cycle(DOORS_CLOSED_ANGLE);
+		current_door_angle = DOORS_CLOSED_ANGLE;
 		overrotating = 0;
 	}
 
-    BBBIO_PWMSS_Setting(BBBIO_PWMSS0, FRQ, duty, 0);
-	BBBIO_ehrPWM_Enable(BBBIO_PWMSS0);
+    start_pwm();
 
 	struct timespec close_time;
 	close_time.tv_sec = 0;
@@ -116,9 +128,8 @@ void doors_close()
 
 	if (overrotating)
 	{
-		duty = angle_to_duty_cycle(DOORS_CLOSED_ANGLE);
-		BBBIO_PWMSS_Setting(BBBIO_PWMSS0, FRQ, duty, 0);
-		BBBIO_ehrPWM_Enable(BBBIO_PWMSS0);
+		current_door_angle = DOORS_CLOSED_ANGLE;
+		start_pwm();
 
 		struct timespec rest_time;
 		rest_time.tv_sec = 0;
@@ -129,4 +140,30 @@ void doors_close()
 	}
 
 	doors_opened = 0;
+}
+
+void dropper_retract()
+{
+	current_dropper_angle = DROPPER_RETRACTED_ANGLE;
+	start_pwm();
+
+	struct timespec move_time;
+	move_time.tv_sec = 0;
+	move_time.tv_nsec = DROPPER_MOVE_TIME_NS;
+	clock_nanosleep(CLOCK_MONOTONIC, 0, &move_time, NULL);
+
+	BBBIO_ehrPWM_Disable(BBBIO_PWMSS0);
+}
+
+void dropper_forward()
+{
+	current_dropper_angle = DROPPER_FORWARD_ANGLE;
+	start_pwm();
+
+	struct timespec move_time;
+	move_time.tv_sec = 0;
+	move_time.tv_nsec = DROPPER_MOVE_TIME_NS;
+	clock_nanosleep(CLOCK_MONOTONIC, 0, &move_time, NULL);
+
+	BBBIO_ehrPWM_Disable(BBBIO_PWMSS0);
 }

@@ -22,4 +22,14 @@ void doors_open();
  */
 void doors_close();
 
+/**
+ * Retract the chip dropper.
+ */
+void dropper_retract();
+
+/**
+ * Move the chip dropper forward.
+ */
+void dropper_forward();
+
 #endif /* MOTORCONTROL_H_ */
